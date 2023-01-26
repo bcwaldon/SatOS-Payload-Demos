@@ -14,10 +14,11 @@
 
 FROM ubuntu:22.04
 
-RUN DEBIAN_FRONTEND=noninteractive apt update && apt install -y wget python3 python3-pip
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt install -y wget python3 python3-pip python3-opencv
 
 RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install grpcio grpcio-tools
+RUN python3 -m pip install grpcio grpcio-tools opencv-python
 
 RUN mkdir -p /opt/antaris/python-imager
 

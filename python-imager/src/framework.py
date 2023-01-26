@@ -66,29 +66,45 @@ class Stoppable:
             self._stopped_cond.wait()
 
 
+class SequenceContext:
+    def __init__(self, handler):
+        self._handler = handler
+
+    @property
+    def params(self):
+        return self._handler._seq_params
+
+    @property
+    def client(self):
+        return self._handler._channel_client
+
+    def deadline_reached(self):
+        return self._handler.deadline_reached()
+
+    def is_stopping(self):
+        return self._handler.is_stopping()
 
 
-class BaseSequenceHandler(Stoppable, threading.Thread):
+class SequenceHandler(Stoppable, threading.Thread):
 
-    # set by subclasses
-    sequence_id = None
-
-    def __init__(self, seq_params, seq_deadline_ms, channel_client, callback, logger):
+    def __init__(self, seq_id, seq_params, seq_deadline_ms, channel_client, handler_func, callback, logger):
         super().__init__()
 
+        self._seq_id = seq_id
         self._seq_params = seq_params
         self._seq_deadline_ms = seq_deadline_ms
 
-        self.channel_client = channel_client
+        self._channel_client = channel_client
+        self._handler_func = handler_func
         self._callback = callback
 
         self.logger = logger
 
     def run(self):
-        self.logger.info("sequence execution started: id=%s" % self.sequence_id)
+        self.logger.info("sequence execution started: id=%s" % self._seq_id)
 
-        self.handle(self._seq_params)
-        self.logger.info("sequence execution completed: id=%s" % self.sequence_id)
+        self._handler_func(SequenceContext(self))
+        self.logger.info("sequence execution completed: id=%s" % self._seq_id)
 
         self.stopped()
         self._callback()
@@ -96,10 +112,6 @@ class BaseSequenceHandler(Stoppable, threading.Thread):
     def deadline_reached(self):
         now_ms = time.time() * 1000
         return now_ms >= self._seq_deadline_ms
-
-    # Must be implemented by subclasses
-    def handle(self, params):
-        raise NotImplementedError()
 
 
 class ChannelClient:
@@ -111,6 +123,11 @@ class ChannelClient:
         self._responses = {}
 
     def get_current_location(self):
+        #NOTE(bcwaldon): pc-sim currently not able to respond, so we provide a dummy response
+        return api_types.RespGetCurrentLocationParams(
+                latitude=1.0, longitude=2.0, altitude=3.0,
+                correlation_id=0, req_status=0, determined_at=None)
+
         with self._cond:
             self._next_cid += 1
             params = api_types.ReqGetCurrentLocationParams(self._next_cid)
@@ -173,7 +190,7 @@ class ChannelClient:
 
 class PayloadApplication(Stoppable):
 
-    def __init__(self, sequence_handlers, logger):
+    def __init__(self, logger):
         super().__init__()
 
         self.logger = logger
@@ -184,8 +201,8 @@ class PayloadApplication(Stoppable):
         # holds active sequence handler
         self.seq_handler = None
 
-        # mapping available sequence handlers for quick lookup later
-        self.sequence_handler_class_idx = dict((c.sequence_id, c) for c in sequence_handlers)
+        # index of registered sequence handler funcs
+        self.sequence_handler_func_idx = dict()
 
         # abstracts access to channel APIs for sequences
         self.channel_client = ChannelClient(channel=None)
@@ -206,6 +223,9 @@ class PayloadApplication(Stoppable):
 
         # used to help coordinate shutdown
         self.shutdown_correlation_id = None
+
+    def mount(self, sequence_id, sequence_handler_func):
+        self.sequence_handler_func_idx[sequence_id] = sequence_handler_func
 
     def run(self):
         self.logger.info("payload app starting")
@@ -259,7 +279,7 @@ class PayloadApplication(Stoppable):
         self.logger.info("handling start_sequence request")
 
         try:
-            seq_handler_class = self.sequence_handler_class_idx[params.sequence_id]
+            handler_func = self.sequence_handler_func_idx[params.sequence_id]
         except KeyError:
             self.logger.info("sequence_id not recognized")
             return api_types.AntarisReturnCode.An_GENERIC_FAILURE
@@ -276,7 +296,7 @@ class PayloadApplication(Stoppable):
                     self.seq_handler = None
                     self._sequence_done(params.sequence_id)
 
-            self.seq_handler = seq_handler_class(params.sequence_params, params.scheduled_deadline, self.channel_client, callback, self.logger)
+            self.seq_handler = SequenceHandler(params.sequence_id, params.sequence_params, params.scheduled_deadline, self.channel_client, handler_func, callback, self.logger)
             self.seq_handler.start()
 
             return api_types.AntarisReturnCode.An_SUCCESS

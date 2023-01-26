@@ -24,3 +24,16 @@ docker run --net=host -v $(pwd)/outbound:/opt/antaris/outbound -it python-imager
 ```
 
 As images are captured by the payload, they are placed in the local "./outbound" directory.
+
+## Physical Camera Support
+
+This app uses [OpenCV](https://docs.opencv.org/4.x/d1/dfb/intro.html) to interact with physical cameras.
+
+To run the payload app with a real camera, you will need to use some additional environment variables and configure docker to make your device available to the container.
+The following is an example of a USB camera connected at /dev/video0 on the host:
+
+```
+docker run -e IMAGER_TYPE=opencv -e IMAGER_PARAMS='{"device_index":0}' --device /dev/video0 --net=host -v $(pwd)/outbound:/opt/antaris/outbound -it python-imager
+```
+
+If your device is located at a different index (i.e. video3), you must also update the `device_index` parameter.

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import datetime
+import json
 import logging
 import pathlib
 import os
@@ -23,14 +24,21 @@ import framework
 import imager
 
 
-# Instantly "captures" an image and places it in the staged
-# download directory.
-class SequenceHandlerAlpha(framework.BaseSequenceHandler):
-    sequence_id = "Sequence_A"
+class ImagerController:
+    def __init__(self, imgr, logger):
+        self.imgr = imgr
+        self.logger = logger
+        self.capture_count = 0
 
-    def handle(self, params):
-        ctl = imager.new()
-        src = ctl.capture()
+    def _parse_params(self, val):
+        cfg = {}
+        for part in val.split(' '):
+            if part.startswith('delay'):
+                cfg['delay'] = int(part[5:])
+        return dict(cfg)
+
+    def _capture_and_stage(self, ctx):
+        src = self.imgr.capture()
         src_last = pathlib.Path(src).name
 
         dt = datetime.datetime.now().isoformat()
@@ -40,41 +48,56 @@ class SequenceHandlerAlpha(framework.BaseSequenceHandler):
             with open(dst, 'wb') as df:
                 df.write(sf.read())
 
+        self.capture_count += 1
+
         self.logger.info(f"captured image: file={dst}")
 
-        self.channel_client.stage_file_download(dst)
+        ctx.client.stage_file_download(dst)
 
+    # Capture a single image and stage for download.
+    def handle_capture_adhoc(self, ctx):
+        self._capture_and_stage(ctx)
 
-# Attempts to get current location from PC then wait until deadline before exiting.
-# Not quite working with pc-sim.
-class SequenceHandlerBravo(framework.BaseSequenceHandler):
-    sequence_id = "Sequence_B"
-
-    def handle(self, params):
-        params = self.channel_client.get_current_location()
-        loc = {"lat": params.latitude, "lng": params.longitude, "alt": params.altitude}
-
-        self.logger.info("get_current_location succeeded: loc=%s" % loc)
+    def handle_capture_repeat(self, ctx):
+        cfg = self._parse_params(ctx.params)
+        delay_sec = cfg.get('delay', 5)
 
         while True:
-            if self.is_stopping():
+            if ctx.is_stopping():
                 self.logger.info("sequence handler stopping")
                 return
 
-            if self.deadline_reached():
+            if ctx.deadline_reached():
                 self.logger.info("sequence deadline reached")
                 return
 
-            self.logger.info("sequence still running")
+            self._capture_and_stage(ctx)
 
-            time.sleep(3)
+            time.sleep(delay_sec)
 
 
+    def handle_dump_diagnostics(self, ctx):
+        dt = datetime.datetime.now().isoformat()
+        ret_loc = ctx.client.get_current_location()
 
-sequence_handlers = [
-    SequenceHandlerAlpha,
-    SequenceHandlerBravo
-]
+        diag = {
+            'created_at': dt,
+            'state': 'OK',
+            'location': {
+                'lat': ret_loc.latitude,
+                'lng': ret_loc.longitude,
+                'alt': ret_loc.altitude,
+            },
+            'capture_count': self.capture_count,
+        }
+
+        dst = f"/opt/antaris/outbound/{dt}-diag.json"
+        with open(dst, 'w') as df:
+            df.write(json.dumps(diag))
+
+        self.logger.info(f"wrote diagnostics: file={dst}")
+
+        ctx.client.stage_file_download(dst)
 
 
 if __name__ == '__main__':
@@ -82,7 +105,18 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
     logger = logging.getLogger()
 
-    pa = framework.PayloadApplication(sequence_handlers, logger)
+    typ = os.environ.get('IMAGER_TYPE', 'dir')
+    params = json.loads(os.environ.get('IMAGER_PARAMS', '{}'))
+    imgr = imager.new(typ, params)
+
+    ctl = ImagerController(imgr, logger)
+
+    pa = framework.PayloadApplication(logger)
+    #NOTE(bcwaldon): sequence names currently hardcoded per pc-sim
+    pa.mount("CaptureAdhoc", ctl.handle_capture_adhoc)
+    pa.mount("CaptureRepeat", ctl.handle_capture_repeat)
+    pa.mount("DumpDiagnostics", ctl.handle_dump_diagnostics)
+
     try:
         pa.run()
     except Exception as exc:

@@ -16,14 +16,21 @@ import pathlib
 import random
 import tempfile
 
+import cv2
 
-def new():
-    return LocalDirectoryImager("/opt/antaris/python-imager/samples")
+
+def new(typ, params):
+    if typ == "dir":
+        return LocalDirectoryImager(**params)
+    elif typ == "opencv":
+        return OpenCVImager(**params)
+    else:
+        raise ValueError("unrecognized imager type")
 
 
 class LocalDirectoryImager:
 
-    def __init__(self, directory):
+    def __init__(self, directory="/opt/antaris/python-imager/samples"):
         self.directory = directory
 
     def _sample(self):
@@ -35,4 +42,22 @@ class LocalDirectoryImager:
         with open(src, 'rb') as sf:
             tf.write(sf.read())
         tf.close()
+        return tf.name
+
+
+class OpenCVImager:
+
+    def __init__(self, device_index=0):
+        self.idx = device_index
+
+    def capture(self):
+        cap = cv2.VideoCapture(self.idx)
+        ret, frame = cap.read()
+        if not ret:
+            raise Exception('failed to capture image')
+
+        tf = tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.jpeg')
+        tf.close()
+
+        cv2.imwrite(tf.name, frame)
         return tf.name
