@@ -20,14 +20,17 @@ import os
 import sys
 import time
 
-import framework
+from satos_payload_sdk import app_framework
+
 import imager
 
 
+logger = logging.getLogger()
+
+
 class ImagerController:
-    def __init__(self, imgr, logger):
+    def __init__(self, imgr):
         self.imgr = imgr
-        self.logger = logger
         self.capture_count = 0
 
     def _parse_params(self, val):
@@ -50,7 +53,7 @@ class ImagerController:
 
         self.capture_count += 1
 
-        self.logger.info(f"captured image: file={dst}")
+        logger.info(f"captured image: file={dst}")
 
         ctx.client.stage_file_download(dst)
 
@@ -63,12 +66,12 @@ class ImagerController:
         delay_sec = cfg.get('delay', 5)
 
         while True:
-            if ctx.is_stopping():
-                self.logger.info("sequence handler stopping")
+            if ctx.stop_requested:
+                logger.info("sequence handler stopping")
                 return
 
-            if ctx.deadline_reached():
-                self.logger.info("sequence deadline reached")
+            if ctx.deadline_reached:
+                logger.info("sequence deadline reached")
                 return
 
             self._capture_and_stage(ctx)
@@ -95,7 +98,7 @@ class ImagerController:
         with open(dst, 'w') as df:
             df.write(json.dumps(diag))
 
-        self.logger.info(f"wrote diagnostics: file={dst}")
+        logger.info(f"wrote diagnostics: file={dst}")
 
         ctx.client.stage_file_download(dst)
 
@@ -103,19 +106,18 @@ class ImagerController:
 if __name__ == '__main__':
     DEBUG = os.environ.get('DEBUG')
     logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
-    logger = logging.getLogger()
 
     typ = os.environ.get('IMAGER_TYPE', 'dir')
     params = json.loads(os.environ.get('IMAGER_PARAMS', '{}'))
     imgr = imager.new(typ, params)
 
-    ctl = ImagerController(imgr, logger)
+    ctl = ImagerController(imgr)
 
-    pa = framework.PayloadApplication(logger)
+    pa = app_framework.PayloadApplication()
     #NOTE(bcwaldon): sequence names currently hardcoded per pc-sim
-    pa.mount("CaptureAdhoc", ctl.handle_capture_adhoc)
-    pa.mount("CaptureRepeat", ctl.handle_capture_repeat)
-    pa.mount("DumpDiagnostics", ctl.handle_dump_diagnostics)
+    pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
+    pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
+    pa.mount_sequence("DumpDiagnostics", ctl.handle_dump_diagnostics)
 
     try:
         pa.run()

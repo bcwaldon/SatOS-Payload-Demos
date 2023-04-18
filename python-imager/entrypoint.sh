@@ -1,5 +1,3 @@
-#!/bin/bash
-#
 # Copyright 2023 Antaris, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-python3 /opt/antaris/python-imager/src/app.py
+python3 /opt/antaris/app/src/app.py

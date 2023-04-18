@@ -12,25 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ubuntu:22.04
+FROM quay.io/antaris-inc/satos-payload-app-python:stable
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt install -y wget python3 python3-pip python3-opencv
+RUN apt update && apt install -y python3-opencv
+RUN python3 -m pip install opencv-python
 
-RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install grpcio grpcio-tools opencv-python
+ADD samples /opt/antaris/app/samples
+ADD src /opt/antaris/app/src
+ADD entrypoint.sh /opt/antaris/app/entrypoint.sh
 
-RUN mkdir -p /opt/antaris/python-imager
-
-ENV SDK_VERSION=1.1.1
-
-WORKDIR /opt/antaris
-RUN wget --content-disposition https://github.com/antaris-inc/SatOS-Payload-SDK/archive/refs/tags/v$SDK_VERSION.tar.gz
-RUN ls -lh . && tar -xzvf SatOS-Payload-SDK-$SDK_VERSION.tar.gz
-
-ADD samples /opt/antaris/python-imager/samples
-ADD src /opt/antaris/python-imager/src
-ADD entrypoint.sh /opt/antaris/python-imager/entrypoint.sh
-
-ENV PYTHONPATH=/opt/antaris/python-imager/src:/opt/antaris/SatOS-Payload-SDK-$SDK_VERSION/lib/python:/opt/antaris/SatOS-Payload-SDK-$SDK_VERSION/lib/python/gen
-CMD /opt/antaris/python-imager/entrypoint.sh
+ENV PYTHONPATH=/opt/antaris/app/src

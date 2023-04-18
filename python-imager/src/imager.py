@@ -30,7 +30,7 @@ def new(typ, params):
 
 class LocalDirectoryImager:
 
-    def __init__(self, directory="/opt/antaris/python-imager/samples"):
+    def __init__(self, directory="/opt/antaris/app/samples"):
         self.directory = directory
 
     def _sample(self):

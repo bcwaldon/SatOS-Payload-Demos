@@ -8,22 +8,23 @@ This support will be extended for some physical camera devices in the near futur
 
 ## Quickstart
 
-In one terminal, check out the [SatOS Payload SDK](https://github.com/antaris-inc/SatOS-Payload-SDK) and walk through
-the instructions up to the point that the payload controller simulator (pc-sim) is running within your build environment (build_env).
+In the Antaris Cloud Platform, create a TrueTwin Satellite with a remote payload and download the associated config.
+Place that downloaded zip file in this directory.
 
-In another terminal, build the python-imager docker image in this repository:
-
-```
-$ docker build -t python-imager .
-```
-
-Next, run a container using the image that was just built:
+Build the python-imager app using the following command:
 
 ```
-docker run --net=host -v $(pwd)/outbound:/opt/antaris/outbound -it python-imager
+docker build --platform=linux/amd64 -t python-imager .
 ```
 
-As images are captured by the payload, they are placed in the local "./outbound" directory.
+Next, we can run the application in a container. The command below assumes that `CONFIG` is set to the name of the downloaded file in your current working directory. The `outbound` directory will also be created and mounted from your local workspace into the container:
+
+```
+docker run --platform=linux/amd64 -e CONFIG=$CONFIG -v $(pwd)/$CONFIG:/workspace -v $(pwd)/outbound:/opt/antaris/outbound -it python-imager
+```
+
+You may now use the Antaris Cloud Platform to submit payload sequences. For example, submitting a `CaptureAdhoc` payload
+sequence will cause an image to be taken, then dropped into the `./outbound` directory for review.
 
 ## Physical Camera Support
 
