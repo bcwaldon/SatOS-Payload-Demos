@@ -114,7 +114,6 @@ if __name__ == '__main__':
     ctl = ImagerController(imgr)
 
     pa = app_framework.PayloadApplication()
-    #NOTE(bcwaldon): sequence names currently hardcoded per pc-sim
     pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
     pa.mount_sequence("DumpDiagnostics", ctl.handle_dump_diagnostics)
