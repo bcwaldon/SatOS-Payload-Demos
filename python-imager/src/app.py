@@ -17,6 +17,7 @@ import json
 import logging
 import pathlib
 import os
+import signal
 import sys
 import time
 
@@ -117,6 +118,9 @@ if __name__ == '__main__':
     pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
     pa.mount_sequence("DumpDiagnostics", ctl.handle_dump_diagnostics)
+
+    signal.signal(signal.SIGTERM, lambda x, y: pa.request_stop())
+    signal.signal(signal.SIGINT, lambda x, y: pa.request_stop())
 
     try:
         pa.run()
