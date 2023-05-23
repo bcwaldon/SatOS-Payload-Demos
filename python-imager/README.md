@@ -20,7 +20,7 @@ docker build --platform=linux/amd64 -t python-imager .
 Next, we can run the application in a container. The command below assumes that `CONFIG` is set to the name of the downloaded file in your current working directory. The `outbound` directory will also be created and mounted from your local workspace into the container:
 
 ```
-docker run --platform=linux/amd64 -e CONFIG=$CONFIG -v $(pwd)/$CONFIG:/workspace -v $(pwd)/outbound:/opt/antaris/outbound -it python-imager
+docker run --platform=linux/amd64 -e CONFIG=$CONFIG -v $(pwd):/workspace -v $(pwd)/outbound:/opt/antaris/outbound -it python-imager
 ```
 
 You may now use the Antaris Cloud Platform to submit payload sequences. For example, submitting a `CaptureAdhoc` payload
