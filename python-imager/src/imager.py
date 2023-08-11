@@ -47,11 +47,16 @@ class LocalDirectoryImager:
 
 class OpenCVImager:
 
-    def __init__(self, device_index=0):
+    def __init__(self, device_index=0, frame_width=640, frame_height=480):
         self.idx = device_index
+        self.frame_width = frame_width
+        self.frame_height = frame_height
 
     def capture(self):
         cap = cv2.VideoCapture(self.idx)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
+
         ret, frame = cap.read()
         if not ret:
             raise Exception('failed to capture image')
