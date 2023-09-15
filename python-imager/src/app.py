@@ -45,18 +45,19 @@ class ImagerController:
         src = self.imgr.capture()
         src_last = pathlib.Path(src).name
 
-        dt = datetime.datetime.now().isoformat()
-        dst = f"/opt/antaris/outbound/{dt}-{src_last}"
+        ts = int(datetime.datetime.now().timestamp())
+        filename = f"{ts}-{src_last}"
+        absdst = f"/opt/antaris/outbound/{filename}"
 
         with open(src, 'rb') as sf:
-            with open(dst, 'wb') as df:
+            with open(absdst, 'wb') as df:
                 df.write(sf.read())
 
         self.capture_count += 1
 
-        logger.info(f"captured image: file={dst}")
+        logger.info(f"captured image: file={filename}")
 
-        ctx.client.stage_file_download(dst)
+        ctx.client.stage_file_download(filename)
 
     # Capture a single image and stage for download.
     def handle_capture_adhoc(self, ctx):
