@@ -117,6 +117,7 @@ if __name__ == '__main__':
 
     pa = app_framework.PayloadApplication()
     pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
+    pa.mount_sequence("CaptureSpot", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
     pa.mount_sequence("DumpDiagnostics", ctl.handle_dump_diagnostics)
 

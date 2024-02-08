@@ -19,6 +19,7 @@ RUN apt update && apt install -y python3-opencv
 RUN python3 -m pip install --upgrade pip
 RUN python3 -m pip install --upgrade opencv-python
 RUN python3 -m pip install --upgrade numpy
+RUN python3 -m pip install --upgrade rasterio cartopy pillow shapely
 
 ADD samples /opt/antaris/app/samples
 ADD src /opt/antaris/app/src
