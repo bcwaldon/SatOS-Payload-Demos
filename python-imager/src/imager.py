@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import math
 import pathlib
 import random
 import tempfile
+import time
 
 import cartopy.crs
 import cartopy.io.img_tiles
@@ -30,8 +32,11 @@ import rasterio.io
 import rasterio.mask
 import shapely
 
+parent_dir = str(pathlib.Path(__file__).parent.resolve())
+track_filename = parent_dir + '/track.json'
 
 logger = logging.getLogger()
+logging.basicConfig(level=logging.INFO)
 
 
 def new(typ, params):
@@ -53,7 +58,7 @@ class LocalDirectoryImager:
     def _sample(self):
         return random.choice(list(pathlib.Path(self.directory).glob('*')))
 
-    def capture(self):
+    def capture_spot(self):
         src = self._sample()
         tf = tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix=src.suffix)
         with open(src, 'rb') as sf:
@@ -69,7 +74,7 @@ class OpenCVImager:
         self.frame_width = frame_width
         self.frame_height = frame_height
 
-    def capture(self):
+    def capture_spot(self):
         cap = cv2.VideoCapture(self.idx)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
@@ -87,48 +92,67 @@ class OpenCVImager:
 
 class WebTileImager:
 
+    EPOCH=1709333390
+    ALT=450
+    INC=98
+    RAAN=350
+    TA=110
+    TSPAN=7200
+
     def __init__(self, zoom_level=12, swath_km=20):
         self.zoom_level = zoom_level
         self.swath_km = swath_km
+        self.started_at = time.time()
 
-    # Returns a random point from within a predefined region.
-    def rand_point(self):
-        return shapely.Point((
-            float(random.randint(-124000, -120000))/1000.,
-            float(random.randint(44000, 51000))/1000.,
-        ))
+        with open(track_filename) as f:
+            self.track = json.loads(f.read())
 
-    # Construct a bounding box around a provided point, using the
-    # configured swath to determine width and height.
-    def scene_bounds(self, point):
-        lat_km2deg = 1 / 110.574
-        lat_swath_deg = self.swath_km * lat_km2deg
+    def _track(self, epoch, tspan):
+        end_epoch = epoch + tspan
 
-        deg2rad = math.pi / 180
-        lon_km2deg = 1 / (111.320 * math.cos(point.y * deg2rad))
-        lon_swath_deg = self.swath_km * lon_km2deg
+        idxs = []
+        for i, ts in enumerate(self.track['timeseries']):
+            if ts < epoch:
+                continue
+            if ts > end_epoch:
+                break
 
-        x_bounds = (point.x - lon_swath_deg/2, point.x + lon_swath_deg/2)
-        y_bounds = (point.y - lat_swath_deg/2, point.y + lat_swath_deg/2)
+            idxs.append(i)
 
-        return x_bounds, y_bounds
+        lla_track = self.track['lla_track']
+        if len(idxs) == 1:
+            coords = [lla_track[idxs[0]]]
+        else:
+            coords = lla_track[idxs[0]:idxs[-1]+1]
 
-    def capture(self, point=None):
+        points = [shapely.Point((c[1], c[0])) for c in coords]
+        return points
+
+    def _epoch(self):
+        now = time.time()
+        elapsed = now - self.started_at
+        return self.EPOCH + elapsed
+
+    def position(self):
+        cur_epoch = self._epoch()
+
+        points = self._track(cur_epoch, tspan=20) # assumes 10sec time step in points
+        if len(points) < 2:
+            raise ValueError("failed generating track data for position")
+
+        cur_heading_north = points[1].y > points[0].y
+
+        return points[0], cur_heading_north
+
+    def track_segment(self, tspan):
+        cur_epoch = self._epoch()
+        points = self._track(cur_epoch, tspan=tspan)
+        return points
+
+    def _capture_image(self, geom):
         bands = 3
 
-        point = point or self.rand_point()
-
-        logger.info(f"capturing imagery at coordinates: lat={point.y}, lon={point.x}")
-
-        x_bounds, y_bounds = self.scene_bounds(point)
-
         tile_src = cartopy.io.img_tiles.GoogleTiles(style='satellite')
-        bbox = cartopy.crs.GOOGLE_MERCATOR.transform_points(cartopy.crs.PlateCarree(), x=np.array(x_bounds), y=np.array(y_bounds))[:, :-1].flatten()
-        geom = shapely.box(*bbox)
-
-        # emulating SSO inclination - will use attitude information in future
-        geom = shapely.affinity.rotate(geom, random.choice([-8, 8]))
-
         dat, extent, _ = tile_src.image_for_domain(geom, self.zoom_level)
 
         # pixels are in reverse order in X-axis, so must flip
@@ -175,3 +199,60 @@ class WebTileImager:
                 img.save(tf.name)
 
                 return tf.name
+
+    def _calc_poly(self, points):
+        tpoints = cartopy.crs.GOOGLE_MERCATOR.transform_points(cartopy.crs.PlateCarree(), x=np.array([p.x for p in points]), y=np.array([p.y for p in points]))[:, :-1]
+
+        if len(tpoints) == 1:
+            geom = shapely.Point([tpoints[0]])
+        else:
+            geom = shapely.LineString(tpoints)
+
+        poly = shapely.buffer(geom, self.swath_km*1000/2, cap_style='square')
+        return poly
+
+    def capture_spot(self):
+        point, north = self.position()
+        poly = self._calc_poly([point])
+
+        # emulating SSO inclination - will use attitude information in future
+        poly = shapely.affinity.rotate(poly, 15 if north else -15)
+
+        img = self._capture_image(poly)
+
+        logger.info(f"captured spot image: coords=[{point.y}, {point.x}]")
+
+        return img
+
+    def capture_strip(self, tspan):
+        points = self.track_segment(tspan)
+        poly = self._calc_poly(points)
+        img = self._capture_image(poly)
+
+        if len(points) > 1:
+            logger.info(f"captured strip image: start=[{points[0].y},{points[0].x}] end=[{points[-1].y}, {points[-1].x}]")
+        else:
+            logger.info(f"captured small strip image: point=[{points[0].y},{points[0].x}]")
+
+        return img
+
+
+if __name__ == '__main__':
+    import requests
+
+    req = {
+        "oe": {
+            "altitude": WebTileImager.ALT,
+            "inclination": WebTileImager.INC,
+            "RAAN": WebTileImager.RAAN,
+            "TA": WebTileImager.TA,
+        },
+        "epoch": WebTileImager.EPOCH,
+        "tspan": WebTileImager.TSPAN,
+    }
+
+    resp = requests.post("http://delta:8080/orbit/all_points", json=req)
+    with open(track_filename, 'w') as f:
+        f.write(resp.text)
+
+    logger.info("updated track file")

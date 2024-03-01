@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import datetime
+import functools
 import json
 import logging
 import pathlib
@@ -41,8 +42,8 @@ class ImagerController:
                 cfg['delay'] = int(part[5:])
         return dict(cfg)
 
-    def _capture_and_stage(self, ctx):
-        src = self.imgr.capture()
+    def _capture_and_stage(self, ctx, capture_func):
+        src = capture_func()
         src_last = pathlib.Path(src).name
 
         ts = int(datetime.datetime.now().timestamp())
@@ -59,9 +60,15 @@ class ImagerController:
 
         ctx.client.stage_file_download(filename)
 
-    # Capture a single image and stage for download.
+    def handle_capture_strip(self, ctx):
+        tspan = ctx._handler._seq_deadline - time.time()
+        logger.info("capturing strip image")
+        time.sleep(tspan-2)
+        capture_func = functools.partial(self.imgr.capture_strip, tspan)
+        self._capture_and_stage(ctx, capture_func)
+
     def handle_capture_adhoc(self, ctx):
-        self._capture_and_stage(ctx)
+        self._capture_and_stage(ctx, self.imgr.capture_spot)
 
     def handle_capture_repeat(self, ctx):
         cfg = self._parse_params(ctx.params)
@@ -76,7 +83,7 @@ class ImagerController:
                 logger.info("sequence deadline reached")
                 return
 
-            self._capture_and_stage(ctx)
+            self._capture_and_stage(ctx, self.imgr.capture_spot)
 
             time.sleep(delay_sec)
 
@@ -119,6 +126,7 @@ if __name__ == '__main__':
     pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureSpot", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
+    pa.mount_sequence("CaptureStrip", ctl.handle_capture_strip)
     pa.mount_sequence("DumpDiagnostics", ctl.handle_dump_diagnostics)
 
     signal.signal(signal.SIGTERM, lambda x, y: pa.request_stop())

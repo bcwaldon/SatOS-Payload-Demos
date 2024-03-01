@@ -1,0 +1,6 @@
+cartopy
+numpy
+opencv-python
+pillow
+rasterio
+shapely

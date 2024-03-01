@@ -17,9 +17,9 @@ FROM quay.io/antaris-inc/satos-payload-app-python:stable
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y python3-opencv
 RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install --upgrade opencv-python
-RUN python3 -m pip install --upgrade numpy
-RUN python3 -m pip install --upgrade rasterio cartopy pillow shapely
+
+ADD requirements.txt /opt/antaris/app/requirements.txt
+RUN python3 -m pip install -r /opt/antaris/app/requirements.txt
 
 ADD samples /opt/antaris/app/samples
 ADD src /opt/antaris/app/src
