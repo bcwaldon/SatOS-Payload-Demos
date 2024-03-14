@@ -225,8 +225,13 @@ class WebTileImager:
 
     def capture_strip(self, deadline, loc):
         logger.info(f"capturing strip image: deadline={deadline} loc={loc}")
+
         now = time.time()
         tspan = deadline - now
+        if tspan > 60:
+            logger.info(f"limiting tspan to 60sec")
+            tspan = 60
+
         points = self.track_segment(now, tspan)
         poly = self._calc_poly(points)
         img = self._capture_image(poly)
