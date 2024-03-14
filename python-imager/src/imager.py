@@ -237,9 +237,9 @@ class WebTileImager:
         img = self._capture_image(poly)
 
         if len(points) > 1:
-            logger.debug(f"captured strip image: start=[{points[0].y},{points[0].x}] end=[{points[-1].y}, {points[-1].x}]")
+            logger.info(f"captured strip image: start=[{points[0].y},{points[0].x}] end=[{points[-1].y}, {points[-1].x}]")
         else:
-            logger.debug(f"captured small strip image: point=[{points[0].y},{points[0].x}]")
+            logger.info(f"captured small strip image: point=[{points[0].y},{points[0].x}]")
 
         return img
 
