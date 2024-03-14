@@ -42,8 +42,10 @@ class ImagerController:
                 cfg['delay'] = int(part[5:])
         return dict(cfg)
 
-    def _capture_and_stage(self, ctx, capture_func):
-        src = capture_func()
+    def _capture(self, ctx, capture_func):
+        loc = ctx.client.get_current_location()
+
+        src = capture_func(loc)
         src_last = pathlib.Path(src).name
 
         ts = int(datetime.datetime.now().timestamp())
@@ -56,23 +58,27 @@ class ImagerController:
 
         self.capture_count += 1
 
-        logger.info(f"captured image: file={filename}")
-
-        ctx.client.stage_file_download(filename)
+        return filename
 
     def handle_capture_strip(self, ctx):
-        tspan = ctx._handler._seq_deadline - time.time()
-        logger.info("capturing strip image")
-        time.sleep(tspan-2)
-        capture_func = functools.partial(self.imgr.capture_strip, tspan)
-        self._capture_and_stage(ctx, capture_func)
+        #NOTE(bcwaldon): hacking in an earlier deadline to leave time for staging file
+        deadline = ctx._handler._seq_deadline - 10
+
+        capture_func = functools.partial(self.imgr.capture_strip, deadline)
+        filename = self._capture(ctx, capture_func)
+        logger.info(f"captured strip image: file={filename}")
+        ctx.client.stage_file_download(filename)
 
     def handle_capture_adhoc(self, ctx):
-        self._capture_and_stage(ctx, self.imgr.capture_spot)
+        filename = self._capture(ctx, self.imgr.capture_spot)
+        logger.info(f"captured spot image: file={filename}")
+        ctx.client.stage_file_download(filename)
 
     def handle_capture_repeat(self, ctx):
         cfg = self._parse_params(ctx.params)
         delay_sec = cfg.get('delay', 5)
+
+        next_trigger = time.time()
 
         while True:
             if ctx.stop_requested:
@@ -83,9 +89,16 @@ class ImagerController:
                 logger.info("sequence deadline reached")
                 return
 
-            self._capture_and_stage(ctx, self.imgr.capture_spot)
+            now = time.time()
+            if now < next_trigger:
+                time.sleep(0.1)
+                continue
 
-            time.sleep(delay_sec)
+            next_trigger = now + delay_sec
+
+            filename = self._capture(ctx, self.imgr.capture_spot)
+            logger.info(f"captured spot image: file={filename}")
+            ctx.client.stage_file_download(filename)
 
 
     def handle_dump_diagnostics(self, ctx):
@@ -114,7 +127,19 @@ class ImagerController:
 
 if __name__ == '__main__':
     DEBUG = os.environ.get('DEBUG')
-    logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
+    logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
+
+    #NOTE(bcwaldon): this is a big hack due to poor logger management in other modules
+    try:
+        handler = logger.handlers[0]
+    except:
+        handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+            '%(asctime)s %(levelname)-8s %(message)s',
+            datefmt='%Y-%m-%dT%H:%M:%SZ',
+    )
+    handler.setFormatter(formatter)
+    logger.handlers[0] = handler
 
     typ = os.environ.get('IMAGER_TYPE', 'dir')
     params = json.loads(os.environ.get('IMAGER_PARAMS', '{}'))

@@ -128,13 +128,12 @@ class WebTileImager:
         points = [shapely.Point((c[1], c[0])) for c in coords]
         return points
 
-    def _epoch(self):
-        now = time.time()
+    def _epoch(self, now):
         elapsed = now - self.started_at
         return self.EPOCH + elapsed
 
-    def position(self):
-        cur_epoch = self._epoch()
+    def position(self, now):
+        cur_epoch = self._epoch(now)
 
         points = self._track(cur_epoch, tspan=20) # assumes 10sec time step in points
         if len(points) < 2:
@@ -144,8 +143,8 @@ class WebTileImager:
 
         return points[0], cur_heading_north
 
-    def track_segment(self, tspan):
-        cur_epoch = self._epoch()
+    def track_segment(self, now, tspan):
+        cur_epoch = self._epoch(now)
         points = self._track(cur_epoch, tspan=tspan)
         return points
 
@@ -212,7 +211,7 @@ class WebTileImager:
         return poly
 
     def capture_spot(self):
-        point, north = self.position()
+        point, north = self.position(time.time())
         poly = self._calc_poly([point])
 
         # emulating SSO inclination - will use attitude information in future
@@ -224,15 +223,18 @@ class WebTileImager:
 
         return img
 
-    def capture_strip(self, tspan):
-        points = self.track_segment(tspan)
+    def capture_strip(self, deadline, loc):
+        logger.info(f"capturing strip image: deadline={deadline} loc={loc}")
+        now = time.time()
+        tspan = deadline - now
+        points = self.track_segment(now, tspan)
         poly = self._calc_poly(points)
         img = self._capture_image(poly)
 
         if len(points) > 1:
-            logger.info(f"captured strip image: start=[{points[0].y},{points[0].x}] end=[{points[-1].y}, {points[-1].x}]")
+            logger.debug(f"captured strip image: start=[{points[0].y},{points[0].x}] end=[{points[-1].y}, {points[-1].x}]")
         else:
-            logger.info(f"captured small strip image: point=[{points[0].y},{points[0].x}]")
+            logger.debug(f"captured small strip image: point=[{points[0].y},{points[0].x}]")
 
         return img
 
