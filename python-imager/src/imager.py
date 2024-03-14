@@ -92,11 +92,11 @@ class OpenCVImager:
 
 class WebTileImager:
 
-    EPOCH=1709333390
-    ALT=450
+    EPOCH=1712138400
+    ALT=460
     INC=98
-    RAAN=350
-    TA=110
+    RAAN=0
+    TA=340
     TSPAN=7200
 
     def __init__(self, zoom_level=12, swath_km=20):
