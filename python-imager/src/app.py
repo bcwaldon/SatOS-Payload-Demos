@@ -61,10 +61,7 @@ class ImagerController:
         return filename
 
     def handle_capture_strip(self, ctx):
-        #NOTE(bcwaldon): hacking in an earlier deadline to leave time for staging file
-        deadline = ctx._handler._seq_deadline - 10
-
-        capture_func = functools.partial(self.imgr.capture_strip, deadline)
+        capture_func = functools.partial(self.imgr.capture_strip, ctx._handler._seq_deadline)
         filename = self._capture(ctx, capture_func)
         logger.info(f"captured strip image: file={filename}")
         ctx.client.stage_file_download(filename)
@@ -125,6 +122,11 @@ class ImagerController:
         ctx.client.stage_file_download(dst)
 
 
+class UnstoppablePayloadApplication(app_framework.PayloadApplication):
+    def _handle_shutdown(self, params):
+        logger.info(f"ignoring shutdown request")
+
+
 if __name__ == '__main__':
     DEBUG = os.environ.get('DEBUG')
     logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
@@ -147,7 +149,7 @@ if __name__ == '__main__':
 
     ctl = ImagerController(imgr)
 
-    pa = app_framework.PayloadApplication()
+    pa = UnstoppablePayloadApplication()
     pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureSpot", ctl.handle_capture_adhoc)
     pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
