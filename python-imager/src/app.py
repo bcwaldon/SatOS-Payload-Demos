@@ -30,10 +30,23 @@ import imager
 logger = logging.getLogger()
 
 
-class ImagerController:
+class ImagerController(app_framework.PayloadApplication):
     def __init__(self, imgr):
+        super().__init__()
+
         self.imgr = imgr
-        self.capture_count = 0
+
+        self.mount_sequence("CaptureStrip", self.handle_capture_strip)
+        self.mount_sequence("CaptureSpot", self.handle_capture_spot)
+        self.mount_sequence("CaptureRepeat", self.handle_capture_repeat)
+
+        self.payload.used_counter = 2
+        self.payload.statsd[0].stats_counter = 1
+        self.payload.statsd[0].stats_names = "Payload Health"
+        self.payload.statsd[1].stats_names = "Capture Count"
+
+    def _inc_capture_count(self):
+        self.payload.statsd[1].stats_counter += 1
 
     def _parse_params(self, val):
         cfg = {}
@@ -56,7 +69,7 @@ class ImagerController:
             with open(absdst, 'wb') as df:
                 df.write(sf.read())
 
-        self.capture_count += 1
+        self._inc_capture_count()
 
         return filename
 
@@ -66,7 +79,7 @@ class ImagerController:
         logger.info(f"captured strip image: file={filename}")
         ctx.client.stage_file_download(filename)
 
-    def handle_capture_adhoc(self, ctx):
+    def handle_capture_spot(self, ctx):
         filename = self._capture(ctx, self.imgr.capture_spot)
         logger.info(f"captured spot image: file={filename}")
         ctx.client.stage_file_download(filename)
@@ -97,32 +110,6 @@ class ImagerController:
             logger.info(f"captured spot image: file={filename}")
             ctx.client.stage_file_download(filename)
 
-
-    def handle_dump_diagnostics(self, ctx):
-        dt = datetime.datetime.now().isoformat()
-        ret_loc = ctx.client.get_current_location()
-
-        diag = {
-            'created_at': dt,
-            'state': 'OK',
-            'location': {
-                'lat': ret_loc.latitude,
-                'lng': ret_loc.longitude,
-                'alt': ret_loc.altitude,
-            },
-            'capture_count': self.capture_count,
-        }
-
-        dst = f"/opt/antaris/outbound/{dt}-diag.json"
-        with open(dst, 'w') as df:
-            df.write(json.dumps(diag))
-
-        logger.info(f"wrote diagnostics: file={dst}")
-
-        ctx.client.stage_file_download(dst)
-
-
-class UnstoppablePayloadApplication(app_framework.PayloadApplication):
     def _handle_shutdown(self, params):
         logger.info(f"ignoring shutdown request")
 
@@ -147,14 +134,7 @@ if __name__ == '__main__':
     params = json.loads(os.environ.get('IMAGER_PARAMS', '{}'))
     imgr = imager.new(typ, params)
 
-    ctl = ImagerController(imgr)
-
-    pa = UnstoppablePayloadApplication()
-    pa.mount_sequence("CaptureAdhoc", ctl.handle_capture_adhoc)
-    pa.mount_sequence("CaptureSpot", ctl.handle_capture_adhoc)
-    pa.mount_sequence("CaptureRepeat", ctl.handle_capture_repeat)
-    pa.mount_sequence("CaptureStrip", ctl.handle_capture_strip)
-    pa.mount_sequence("DumpDiagnostics", ctl.handle_dump_diagnostics)
+    pa = ImagerController(imgr)
 
     signal.signal(signal.SIGTERM, lambda x, y: pa.request_stop())
     signal.signal(signal.SIGINT, lambda x, y: pa.request_stop())
