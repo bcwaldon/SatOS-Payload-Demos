@@ -41,9 +41,12 @@ class ImagerController(app_framework.PayloadApplication):
         self.mount_sequence("CaptureRepeat", self.handle_capture_repeat)
 
         self.payload.used_counter = 2
-        self.payload.statsd[0].stats_counter = 1
+
         self.payload.statsd[0].stats_names = "Payload Health"
+        self.payload.statsd[0].stats_counter = 1
+
         self.payload.statsd[1].stats_names = "Capture Count"
+        self.payload.statsd[1].stats_counter = 0
 
     def _inc_capture_count(self):
         self.payload.statsd[1].stats_counter += 1

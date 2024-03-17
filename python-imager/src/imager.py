@@ -96,7 +96,7 @@ class WebTileImager:
     ALT=460
     INC=98
     RAAN=0
-    TA=340
+    TA=320
     TSPAN=7200
 
     def __init__(self, zoom_level=12, swath_km=20):
