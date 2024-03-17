@@ -128,25 +128,14 @@ class WebTileImager:
         points = [shapely.Point((c[1], c[0])) for c in coords]
         return points
 
-    def _epoch(self, now):
-        elapsed = now - self.started_at
-        return self.EPOCH + elapsed
-
-    def position(self, now):
-        cur_epoch = self._epoch(now)
-
-        points = self._track(cur_epoch, tspan=20) # assumes 10sec time step in points
+    def position(self, as_of):
+        points = self._track(as_of, tspan=20) # assumes 10sec time step in points
         if len(points) < 2:
             raise ValueError("failed generating track data for position")
 
-        cur_heading_north = points[1].y > points[0].y
+        ascending = points[1].y > points[0].y
 
-        return points[0], cur_heading_north
-
-    def track_segment(self, now, tspan):
-        cur_epoch = self._epoch(now)
-        points = self._track(cur_epoch, tspan=tspan)
-        return points
+        return points[0], ascending
 
     def _capture_image(self, geom):
         bands = 3
@@ -210,12 +199,12 @@ class WebTileImager:
         poly = shapely.buffer(geom, self.swath_km*1000/2, cap_style='square')
         return poly
 
-    def capture_spot(self):
-        point, north = self.position(time.time())
+    def capture_spot(self, loc):
+        point, ascending = self.position(loc.determined_at)
         poly = self._calc_poly([point])
 
         # emulating SSO inclination - will use attitude information in future
-        poly = shapely.affinity.rotate(poly, 15 if north else -15)
+        poly = shapely.affinity.rotate(poly, 15 if ascending else -15)
 
         img = self._capture_image(poly)
 
@@ -223,16 +212,17 @@ class WebTileImager:
 
         return img
 
-    def capture_strip(self, deadline, loc):
-        logger.info(f"capturing strip image: deadline={deadline} loc={loc}")
+    def capture_strip(self, loc):
+        logger.info(f"capturing strip image: loc={loc}")
 
-        start = time.time()
-        tspan = deadline - start
-        if tspan > 60:
-            logger.info(f"limiting tspan to 60sec")
-            tspan = 60
+        strip_start_time = loc.determined_at
 
-        points = self.track_segment(start, tspan)
+        #NOTE(bcwaldon): will have to wait until we get actual deadline value
+        # before tspan can be set programmatically
+        tspan = 60
+
+        points = self._track(strip_start_time, tspan=tspan)
+
         poly = self._calc_poly(points)
         img = self._capture_image(poly)
 
@@ -241,10 +231,8 @@ class WebTileImager:
         else:
             logger.info(f"capturing small strip image: point=[{points[0].y},{points[0].x}]")
 
-        logger.info(f"waiting until strip capture complete")
-        remaining = tspan - (time.time() - start)
-        if remaining > 0:
-            time.sleep(remaining)
+        logger.info(f"simulating having to wait until strip capture complete")
+        time.sleep(tspan-10)
 
         return img
 
