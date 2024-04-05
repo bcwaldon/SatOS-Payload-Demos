@@ -13,6 +13,7 @@
 # limitations under the License.
 
 FROM satos-payload-app-python:latest
+#FROM quay.io/antaris-inc/satos-payload-app-python:stable
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y python3-opencv

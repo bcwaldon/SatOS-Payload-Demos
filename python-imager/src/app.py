@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import datetime
-import functools
 import json
 import logging
 import pathlib
@@ -77,8 +76,7 @@ class ImagerController(app_framework.PayloadApplication):
         return filename
 
     def handle_capture_strip(self, ctx):
-        capture_func = functools.partial(self.imgr.capture_strip, ctx._handler._seq_deadline)
-        filename = self._capture(ctx, capture_func)
+        filename = self._capture(ctx, self.imgr.capture_strip)
         logger.info(f"captured strip image: file={filename}")
         ctx.client.stage_file_download(filename)
 
